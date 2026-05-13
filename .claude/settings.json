@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go:*)",
+      "Bash(go mod:*)",
+      "Bash(go get:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(go run:*)",
+      "Bash(make:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(rm:*)",
+      "Bash(chmod:*)"
+    ],
+    "deny": [
+      "Bash(sudo:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(systemctl:*)"
+    ]
+  }
+}
