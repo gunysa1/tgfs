@@ -34,7 +34,13 @@ cd tgfs
 sudo make install
 ```
 
-This builds both binaries and installs them to `/usr/local/bin`, copies the systemd unit, and enables the service.
+This builds both binaries and installs them to `/usr/local/bin`, copies the systemd unit, and reloads systemd.
+
+If `go` is not in your `PATH` (e.g. installed to a custom location), pass it explicitly:
+
+```bash
+sudo make install GO=/usr/local/go/bin/go
+```
 
 ## Configuration
 
@@ -89,10 +95,10 @@ tgfs channel rm movies
 
 ```bash
 # Preview what would be uploaded (no writes)
-tgfs migrate /home/guny/data/merged --dry-run
+tgfs migrate /path/to/media --dry-run
 
 # Run the migration
-tgfs migrate /home/guny/data/merged
+tgfs migrate /path/to/media
 ```
 
 Migration is idempotent — already-uploaded files are skipped.
