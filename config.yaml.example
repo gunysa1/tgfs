@@ -1,0 +1,19 @@
+telegram:
+  bot_token: "YOUR_BOT_TOKEN_HERE"
+  channels:
+    - id: -1001234567890
+      name: movies
+    - id: -1009876543210
+      name: tv
+
+mount:
+  path: /mnt/tgfs
+
+db:
+  path: /var/lib/tgfs/tgfs.db
+
+cache:
+  max_size_gb: 2
+
+chunk:
+  size_mb: 1900
