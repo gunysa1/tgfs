@@ -69,7 +69,7 @@ tgfs/
 
 ```bash
 cd /home/guny/tgfs
-go mod init github.com/yourusername/tgfs
+go mod init github.com/gunysa1/tgfs
 ```
 
 - [ ] **Step 2: Add dependencies**
@@ -119,7 +119,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yourusername/tgfs/internal/config"
+	"github.com/gunysa1/tgfs/internal/config"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -321,7 +321,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourusername/tgfs/internal/db"
+	"github.com/gunysa1/tgfs/internal/db"
 )
 
 func testDB(t *testing.T) *db.DB {
@@ -1021,7 +1021,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/yourusername/tgfs/internal/chunker"
+	"github.com/gunysa1/tgfs/internal/chunker"
 )
 
 func TestSplit_SingleChunk(t *testing.T) {
@@ -1238,7 +1238,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/yourusername/tgfs/internal/cache"
+	"github.com/gunysa1/tgfs/internal/cache"
 )
 
 func TestCache_GetSet(t *testing.T) {
@@ -1391,7 +1391,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yourusername/tgfs/internal/ipc"
+	"github.com/gunysa1/tgfs/internal/ipc"
 )
 
 func TestIPCRoundtrip(t *testing.T) {
@@ -1614,9 +1614,9 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	"github.com/yourusername/tgfs/internal/bot"
-	"github.com/yourusername/tgfs/internal/cache"
-	"github.com/yourusername/tgfs/internal/db"
+	"github.com/gunysa1/tgfs/internal/bot"
+	"github.com/gunysa1/tgfs/internal/cache"
+	"github.com/gunysa1/tgfs/internal/db"
 )
 
 type TgFS struct {
@@ -1676,7 +1676,7 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	"github.com/yourusername/tgfs/internal/db"
+	"github.com/gunysa1/tgfs/internal/db"
 )
 
 type Dir struct {
@@ -1739,8 +1739,8 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	"github.com/yourusername/tgfs/internal/chunker"
-	"github.com/yourusername/tgfs/internal/db"
+	"github.com/gunysa1/tgfs/internal/chunker"
+	"github.com/gunysa1/tgfs/internal/db"
 )
 
 type File struct {
@@ -1836,7 +1836,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/yourusername/tgfs/internal/migrate"
+	"github.com/gunysa1/tgfs/internal/migrate"
 )
 
 func TestWalkLibrary(t *testing.T) {
@@ -2145,7 +2145,7 @@ import (
 	"os/exec"
 
 	"github.com/spf13/cobra"
-	"github.com/yourusername/tgfs/internal/ipc"
+	"github.com/gunysa1/tgfs/internal/ipc"
 )
 
 func newDaemonCmds() []*cobra.Command {
@@ -2213,7 +2213,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/yourusername/tgfs/internal/ipc"
+	"github.com/gunysa1/tgfs/internal/ipc"
 )
 
 func newFileCmds() []*cobra.Command {
@@ -2324,7 +2324,7 @@ import (
 	"strconv"
 
 	"github.com/spf13/cobra"
-	"github.com/yourusername/tgfs/internal/ipc"
+	"github.com/gunysa1/tgfs/internal/ipc"
 )
 
 func newChannelCmd() *cobra.Command {
@@ -2414,7 +2414,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/yourusername/tgfs/internal/ipc"
+	"github.com/gunysa1/tgfs/internal/ipc"
 )
 
 func newCacheCmd() *cobra.Command {
@@ -2471,7 +2471,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/yourusername/tgfs/internal/ipc"
+	"github.com/gunysa1/tgfs/internal/ipc"
 )
 
 func newMigrateCmd() *cobra.Command {
@@ -2520,7 +2520,7 @@ package main
 import (
 	"os"
 
-	"github.com/yourusername/tgfs/cli"
+	"github.com/gunysa1/tgfs/cli"
 )
 
 func main() {
@@ -2547,13 +2547,13 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/yourusername/tgfs/internal/bot"
-	"github.com/yourusername/tgfs/internal/cache"
-	"github.com/yourusername/tgfs/internal/config"
-	"github.com/yourusername/tgfs/internal/db"
-	tgfs_fs "github.com/yourusername/tgfs/internal/fs"
-	"github.com/yourusername/tgfs/internal/ipc"
-	"github.com/yourusername/tgfs/internal/migrate"
+	"github.com/gunysa1/tgfs/internal/bot"
+	"github.com/gunysa1/tgfs/internal/cache"
+	"github.com/gunysa1/tgfs/internal/config"
+	"github.com/gunysa1/tgfs/internal/db"
+	tgfs_fs "github.com/gunysa1/tgfs/internal/fs"
+	"github.com/gunysa1/tgfs/internal/ipc"
+	"github.com/gunysa1/tgfs/internal/migrate"
 )
 
 func main() {
