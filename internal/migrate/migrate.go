@@ -27,7 +27,10 @@ func WalkLibrary(localRoot string) ([]Entry, error) {
 		if err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(localRoot, path)
+		rel, err := filepath.Rel(localRoot, path)
+		if err != nil {
+			return err
+		}
 		if rel == "." {
 			return nil
 		}
