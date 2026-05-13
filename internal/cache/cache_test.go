@@ -53,6 +53,20 @@ func TestCache_Clear(t *testing.T) {
 	}
 }
 
+func TestCache_Overwrite(t *testing.T) {
+	c := cache.New(100)
+	c.Set(1, 0, []byte("hello"))   // 5 bytes
+	c.Set(1, 0, []byte("hi"))      // 2 bytes — overwrites, should not double-count
+	cur, _ := c.Stats()
+	if cur != 2 {
+		t.Errorf("expected 2 bytes after overwrite, got %d", cur)
+	}
+	got, ok := c.Get(1, 0)
+	if !ok || string(got) != "hi" {
+		t.Errorf("expected 'hi', got %q ok=%v", got, ok)
+	}
+}
+
 func TestCache_Stats(t *testing.T) {
 	c := cache.New(100)
 	c.Set(1, 0, []byte("hello")) // 5 bytes

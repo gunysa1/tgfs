@@ -37,11 +37,16 @@ func (c *Cache) Get(fileID int64, chunkIndex int) ([]byte, bool) {
 func (c *Cache) Set(fileID int64, chunkIndex int, data []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	k := key{fileID, chunkIndex}
 	sz := int64(len(data))
+	// Subtract old entry size if key already exists (Add overwrites without eviction callback).
+	if old, ok := c.lru.Peek(k); ok {
+		c.curBytes -= int64(len(old))
+	}
 	for c.curBytes+sz > c.maxBytes && c.lru.Len() > 0 {
 		c.lru.RemoveOldest()
 	}
-	c.lru.Add(key{fileID, chunkIndex}, data)
+	c.lru.Add(k, data)
 	c.curBytes += sz
 }
 
