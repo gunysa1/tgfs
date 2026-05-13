@@ -1,4 +1,4 @@
-module github.com/yourusername/tgfs
+module github.com/gunysa1/tgfs
 
 go 1.25.0
 
