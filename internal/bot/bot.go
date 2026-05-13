@@ -23,7 +23,7 @@ func New(token string) (*Client, error) {
 // Upload sends a file chunk to the given Telegram channel.
 // Returns (messageID, telegramFileID, error).
 // telegramFileID is needed later for DownloadByFileID.
-func (c *Client) Upload(channelID int64, filename string, r io.Reader, size int64) (int, string, error) {
+func (c *Client) Upload(channelID int64, filename string, r io.Reader) (int, string, error) {
 	reader := tgbotapi.FileReader{
 		Name:   filename,
 		Reader: r,
