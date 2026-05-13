@@ -44,6 +44,7 @@ func Mount(ctx context.Context, mountPath string, tgfs *TgFS) error {
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sig)
 	go func() {
 		select {
 		case <-ctx.Done():

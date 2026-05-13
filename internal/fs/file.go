@@ -38,11 +38,20 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		metas[i] = chunker.ChunkMeta{Index: c.ChunkIndex, Size: c.Size}
 	}
 
+	// Build map for safe lookup by ChunkIndex (not slice position).
+	chunkByIndex := make(map[int]db.Chunk, len(chunks))
+	for _, c := range chunks {
+		chunkByIndex[c.ChunkIndex] = c
+	}
+
 	refs := chunker.ResolveRange(metas, req.Offset, int64(req.Size))
 	var result []byte
 
 	for _, ref := range refs {
-		chunk := chunks[ref.ChunkIndex]
+		chunk, ok := chunkByIndex[ref.ChunkIndex]
+		if !ok {
+			return fuse.EIO
+		}
 
 		if cached, ok := f.tgfs.cache.Get(f.file.ID, ref.ChunkIndex); ok {
 			result = append(result, cached[ref.OffsetInChunk:ref.OffsetInChunk+ref.Length]...)
