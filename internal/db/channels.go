@@ -1,6 +1,8 @@
 package db
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -47,8 +49,11 @@ func (d *DB) GetChannelByName(name string) (Channel, error) {
 	err := d.conn.QueryRow(
 		`SELECT id, telegram_id, name, created_at FROM channels WHERE name = ?`, name,
 	).Scan(&ch.ID, &ch.TelegramID, &ch.Name, &ch.CreatedAt)
-	if err != nil {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Channel{}, ErrNotFound
+	}
+	if err != nil {
+		return Channel{}, err
 	}
 	return ch, nil
 }
