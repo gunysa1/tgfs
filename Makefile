@@ -1,11 +1,13 @@
 .PHONY: build test install clean
 
+GO ?= go
+
 build:
-	/home/guny/go/bin/go build -o bin/tgfsd ./cmd/tgfsd
-	/home/guny/go/bin/go build -o bin/tgfs ./cmd/tgfs
+	$(GO) build -o bin/tgfsd ./cmd/tgfsd
+	$(GO) build -o bin/tgfs ./cmd/tgfs
 
 test:
-	/home/guny/go/bin/go test ./... -v
+	$(GO) test ./... -v
 
 install: build
 	install -m 755 bin/tgfsd /usr/local/bin/tgfsd
