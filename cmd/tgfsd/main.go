@@ -53,7 +53,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	handler := buildHandler(database, botClient, chunkCache, cfg)
+	handler := buildHandler(ctx, database, botClient, chunkCache, cfg)
 	srv := ipc.NewServer("/run/tgfs/tgfs.sock", func(req ipc.Request) ipc.Response {
 		if req.Command == "stop" {
 			cancel()
@@ -80,7 +80,7 @@ func main() {
 	}
 }
 
-func buildHandler(database *db.DB, botClient *bot.Client, chunkCache *cache.Cache, cfg *config.Config) ipc.HandlerFunc {
+func buildHandler(ctx context.Context, database *db.DB, botClient *bot.Client, chunkCache *cache.Cache, cfg *config.Config) ipc.HandlerFunc {
 	return func(req ipc.Request) ipc.Response {
 		switch req.Command {
 		case "status":
@@ -222,9 +222,15 @@ func buildHandler(database *db.DB, botClient *bot.Client, chunkCache *cache.Cach
 			chunks := migrate.PlanChunks(info.Size(), chunkSizeBytes)
 			go func() {
 				for _, chunk := range chunks {
+					if ctx.Err() != nil {
+						log.Printf("upload: context cancelled, cleaning up %s", virtualPath)
+						database.DeleteFile(dbFile.ID)
+						return
+					}
 					sr, f, err := migrate.OpenChunk(localPath, chunk.Offset, chunk.Size)
 					if err != nil {
 						log.Printf("upload: open chunk: %v", err)
+						database.DeleteFile(dbFile.ID)
 						return
 					}
 					fname := migrate.ChunkFilename(virtualPath, chunk.Index, len(chunks))
@@ -232,6 +238,7 @@ func buildHandler(database *db.DB, botClient *bot.Client, chunkCache *cache.Cach
 					f.Close()
 					if err != nil {
 						log.Printf("upload: telegram: %v", err)
+						database.DeleteFile(dbFile.ID)
 						return
 					}
 					if _, err := database.CreateChunk(db.Chunk{
@@ -243,6 +250,7 @@ func buildHandler(database *db.DB, botClient *bot.Client, chunkCache *cache.Cach
 						Size:           chunk.Size,
 					}); err != nil {
 						log.Printf("upload: save chunk: %v", err)
+						database.DeleteFile(dbFile.ID)
 						return
 					}
 				}
@@ -275,6 +283,9 @@ func buildHandler(database *db.DB, botClient *bot.Client, chunkCache *cache.Cach
 				err := m.Run(
 					localPath,
 					func(vpath string) bool {
+						if ctx.Err() != nil {
+							return true // treat as exists to abort iteration cleanly
+						}
 						_, err := database.GetFileByPath(vpath)
 						return err == nil
 					},
