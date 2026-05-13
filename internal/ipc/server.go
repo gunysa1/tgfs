@@ -3,6 +3,7 @@ package ipc
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net"
 	"os"
 )
@@ -46,8 +47,11 @@ func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 	var req Request
 	if err := json.NewDecoder(conn).Decode(&req); err != nil {
+		log.Printf("ipc: decode request: %v", err)
 		return
 	}
 	resp := s.handler(req)
-	json.NewEncoder(conn).Encode(resp)
+	if err := json.NewEncoder(conn).Encode(resp); err != nil {
+		log.Printf("ipc: encode response: %v", err)
+	}
 }
