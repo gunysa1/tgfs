@@ -1,0 +1,16 @@
+[Unit]
+Description=tgfs Telegram FUSE daemon
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tgfsd --config /etc/tgfs/config.yaml
+ExecStop=/usr/local/bin/tgfs stop
+Restart=on-failure
+RestartSec=5
+User=root
+Environment=HOME=/root
+
+[Install]
+WantedBy=multi-user.target
