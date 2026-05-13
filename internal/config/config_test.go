@@ -7,8 +7,22 @@ import (
 	"github.com/gunysa1/tgfs/internal/config"
 )
 
+func writeTempConfig(t *testing.T, content string) string {
+	t.Helper()
+	f, err := os.CreateTemp("", "config-*.yaml")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	f.Close()
+	t.Cleanup(func() { os.Remove(f.Name()) })
+	return f.Name()
+}
+
 func TestLoadConfig(t *testing.T) {
-	yaml := `
+	path := writeTempConfig(t, `
 telegram:
   bot_token: "test-token"
   channels:
@@ -22,13 +36,8 @@ cache:
   max_size_gb: 2
 chunk:
   size_mb: 1900
-`
-	f, _ := os.CreateTemp("", "config-*.yaml")
-	f.WriteString(yaml)
-	f.Close()
-	defer os.Remove(f.Name())
-
-	cfg, err := config.Load(f.Name())
+`)
+	cfg, err := config.Load(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -49,22 +58,43 @@ chunk:
 	}
 }
 
+func TestLoadConfig_Defaults(t *testing.T) {
+	path := writeTempConfig(t, `
+telegram:
+  bot_token: "tok"
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Mount.Path != "/mnt/tgfs" {
+		t.Errorf("expected default mount path, got %q", cfg.Mount.Path)
+	}
+	if cfg.DB.Path != "/var/lib/tgfs/tgfs.db" {
+		t.Errorf("expected default db path, got %q", cfg.DB.Path)
+	}
+	if cfg.Cache.MaxSizeGB != 2 {
+		t.Errorf("expected default cache 2, got %d", cfg.Cache.MaxSizeGB)
+	}
+	if cfg.Chunk.SizeMB != 1900 {
+		t.Errorf("expected default chunk 1900, got %d", cfg.Chunk.SizeMB)
+	}
+}
+
 func TestLoadConfig_MissingBotToken(t *testing.T) {
-	yaml := `
+	path := writeTempConfig(t, `
 telegram:
   bot_token: ""
-mount:
-  path: /mnt/tgfs
-db:
-  path: /tmp/test.db
-`
-	f, _ := os.CreateTemp("", "config-*.yaml")
-	f.WriteString(yaml)
-	f.Close()
-	defer os.Remove(f.Name())
-
-	_, err := config.Load(f.Name())
+`)
+	_, err := config.Load(path)
 	if err == nil {
 		t.Fatal("expected error for missing bot_token, got nil")
+	}
+}
+
+func TestLoadConfig_FileNotFound(t *testing.T) {
+	_, err := config.Load("/nonexistent/path/config.yaml")
+	if err == nil {
+		t.Fatal("expected error for missing file, got nil")
 	}
 }
