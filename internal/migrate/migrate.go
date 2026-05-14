@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 )
 
 type Entry struct {
@@ -72,11 +74,16 @@ func WalkLibrary(localRoot string) ([]Entry, error) {
 type Migrator struct {
 	ChunkSizeBytes int64
 	DryRun         bool
+	FileWorkers    int
 	OnProgress     func(virtualPath string, done, total int)
 	OnSkip         func(virtualPath string)
+	OnError        func(virtualPath string, err error)
 }
 
 // Run executes the migration for all entries in localRoot.
+// Directories are created sequentially in walk order; file uploads
+// are fanned out to FileWorkers goroutines. Per-file upload errors
+// are reported via OnError and do not abort the run.
 func (m *Migrator) Run(
 	localRoot string,
 	fileExists func(virtualPath string) bool,
@@ -88,35 +95,76 @@ func (m *Migrator) Run(
 		return fmt.Errorf("walk library: %w", err)
 	}
 
-	total := len(entries)
-	for i, e := range entries {
-		if m.OnProgress != nil {
-			m.OnProgress(e.VirtualPath, i, total)
-		}
+	workers := m.FileWorkers
+	if workers < 1 {
+		workers = 1
+	}
 
+	total := len(entries)
+	var done int64
+
+	// Pass 1: directories synchronously (ensures parents exist before children).
+	for _, e := range entries {
+		if !e.IsDir {
+			continue
+		}
+		i := atomic.AddInt64(&done, 1) - 1
+		if m.OnProgress != nil {
+			m.OnProgress(e.VirtualPath, int(i), total)
+		}
 		if fileExists(e.VirtualPath) {
 			if m.OnSkip != nil {
 				m.OnSkip(e.VirtualPath)
 			}
 			continue
 		}
-
 		if m.DryRun {
-			fmt.Printf("[dry-run] would upload: %s\n", e.VirtualPath)
+			fmt.Printf("[dry-run] would mkdir: %s\n", e.VirtualPath)
 			continue
 		}
-
-		if e.IsDir {
-			if err := createDir(e.VirtualPath, e.Name); err != nil {
-				return fmt.Errorf("create dir %s: %w", e.VirtualPath, err)
-			}
-			continue
-		}
-
-		if err := uploadAndRecord(e); err != nil {
-			return fmt.Errorf("upload %s: %w", e.VirtualPath, err)
+		if err := createDir(e.VirtualPath, e.Name); err != nil {
+			return fmt.Errorf("create dir %s: %w", e.VirtualPath, err)
 		}
 	}
+
+	// Pass 2: files in parallel.
+	jobs := make(chan Entry)
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for e := range jobs {
+				i := atomic.AddInt64(&done, 1) - 1
+				if m.OnProgress != nil {
+					m.OnProgress(e.VirtualPath, int(i), total)
+				}
+				if fileExists(e.VirtualPath) {
+					if m.OnSkip != nil {
+						m.OnSkip(e.VirtualPath)
+					}
+					continue
+				}
+				if m.DryRun {
+					fmt.Printf("[dry-run] would upload: %s\n", e.VirtualPath)
+					continue
+				}
+				if err := uploadAndRecord(e); err != nil {
+					if m.OnError != nil {
+						m.OnError(e.VirtualPath, err)
+					}
+				}
+			}
+		}()
+	}
+	for _, e := range entries {
+		if e.IsDir {
+			continue
+		}
+		jobs <- e
+	}
+	close(jobs)
+	wg.Wait()
 	return nil
 }
 

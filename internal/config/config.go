@@ -29,6 +29,10 @@ type Config struct {
 	Chunk struct {
 		SizeMB int `yaml:"size_mb"`
 	} `yaml:"chunk"`
+	Migrate struct {
+		FileWorkers  int `yaml:"file_workers"`
+		ChunkWorkers int `yaml:"chunk_workers"`
+	} `yaml:"migrate"`
 }
 
 func Load(path string) (*Config, error) {
@@ -54,6 +58,12 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Chunk.SizeMB == 0 {
 		cfg.Chunk.SizeMB = 1900
+	}
+	if cfg.Migrate.FileWorkers == 0 {
+		cfg.Migrate.FileWorkers = 4
+	}
+	if cfg.Migrate.ChunkWorkers == 0 {
+		cfg.Migrate.ChunkWorkers = 4
 	}
 	return &cfg, nil
 }

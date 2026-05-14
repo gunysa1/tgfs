@@ -9,6 +9,8 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/gunysa1/tgfs/internal/bot"
@@ -209,6 +211,11 @@ func buildHandler(ctx context.Context, database *db.DB, botClient *bot.Client, c
 				return ipc.Response{Error: fmt.Sprintf("stat %q: %v", localPath, err)}
 			}
 
+			// ensure all parent directories exist in the DB
+			if err := ensureDirs(database, virtualPath); err != nil {
+				return ipc.Response{Error: fmt.Sprintf("ensure dirs: %v", err)}
+			}
+
 			dbFile, err := database.CreateFile(db.File{
 				Path:     virtualPath,
 				Name:     name,
@@ -220,39 +227,12 @@ func buildHandler(ctx context.Context, database *db.DB, botClient *bot.Client, c
 			}
 
 			chunks := migrate.PlanChunks(info.Size(), chunkSizeBytes)
+			chunkWorkers := cfg.Migrate.ChunkWorkers
 			go func() {
-				for _, chunk := range chunks {
-					if ctx.Err() != nil {
-						log.Printf("upload: context cancelled, cleaning up %s", virtualPath)
-						database.DeleteFile(dbFile.ID)
-						return
-					}
-					sr, f, err := migrate.OpenChunk(localPath, chunk.Offset, chunk.Size)
-					if err != nil {
-						log.Printf("upload: open chunk: %v", err)
-						database.DeleteFile(dbFile.ID)
-						return
-					}
-					fname := migrate.ChunkFilename(virtualPath, chunk.Index, len(chunks))
-					msgID, tgFileID, err := botClient.Upload(ch.TelegramID, fname, sr)
-					f.Close()
-					if err != nil {
-						log.Printf("upload: telegram: %v", err)
-						database.DeleteFile(dbFile.ID)
-						return
-					}
-					if _, err := database.CreateChunk(db.Chunk{
-						FileID:         dbFile.ID,
-						ChunkIndex:     chunk.Index,
-						MessageID:      msgID,
-						TelegramFileID: tgFileID,
-						ChannelID:      ch.ID,
-						Size:           chunk.Size,
-					}); err != nil {
-						log.Printf("upload: save chunk: %v", err)
-						database.DeleteFile(dbFile.ID)
-						return
-					}
+				if err := uploadChunksParallel(ctx, botClient, database, localPath, virtualPath, dbFile.ID, chunks, ch, chunkWorkers); err != nil {
+					log.Printf("upload: %s: %v", virtualPath, err)
+					database.DeleteFile(dbFile.ID)
+					return
 				}
 				log.Printf("uploaded %s", virtualPath)
 			}()
@@ -269,15 +249,22 @@ func buildHandler(ctx context.Context, database *db.DB, botClient *bot.Client, c
 			}
 			defaultChannel := channels[0]
 
+			fileWorkers := cfg.Migrate.FileWorkers
+			chunkWorkers := cfg.Migrate.ChunkWorkers
 			go func() {
+				log.Printf("migrate: starting walk of %s (dry_run=%v, file_workers=%d, chunk_workers=%d)", localPath, dryRun, fileWorkers, chunkWorkers)
 				m := &migrate.Migrator{
 					ChunkSizeBytes: chunkSizeBytes,
 					DryRun:         dryRun,
+					FileWorkers:    fileWorkers,
 					OnProgress: func(vpath string, done, total int) {
 						log.Printf("[%d/%d] %s", done, total, vpath)
 					},
 					OnSkip: func(vpath string) {
 						log.Printf("skip (exists): %s", vpath)
+					},
+					OnError: func(vpath string, err error) {
+						log.Printf("upload failed: %s: %v", vpath, err)
 					},
 				}
 				err := m.Run(
@@ -294,6 +281,9 @@ func buildHandler(ctx context.Context, database *db.DB, botClient *bot.Client, c
 						return err
 					},
 					func(entry migrate.Entry) error {
+						if ctx.Err() != nil {
+							return ctx.Err()
+						}
 						chunks := migrate.PlanChunks(entry.Size, chunkSizeBytes)
 						dbFile, err := database.CreateFile(db.File{
 							Path:     entry.VirtualPath,
@@ -304,27 +294,9 @@ func buildHandler(ctx context.Context, database *db.DB, botClient *bot.Client, c
 						if err != nil {
 							return err
 						}
-						for _, chunk := range chunks {
-							sr, f, err := migrate.OpenChunk(entry.LocalPath, chunk.Offset, chunk.Size)
-							if err != nil {
-								return err
-							}
-							fname := migrate.ChunkFilename(entry.VirtualPath, chunk.Index, len(chunks))
-							msgID, tgFileID, err := botClient.Upload(defaultChannel.TelegramID, fname, sr)
-							f.Close()
-							if err != nil {
-								return err
-							}
-							if _, err = database.CreateChunk(db.Chunk{
-								FileID:         dbFile.ID,
-								ChunkIndex:     chunk.Index,
-								MessageID:      msgID,
-								TelegramFileID: tgFileID,
-								ChannelID:      defaultChannel.ID,
-								Size:           chunk.Size,
-							}); err != nil {
-								return err
-							}
+						if err := uploadChunksParallel(ctx, botClient, database, entry.LocalPath, entry.VirtualPath, dbFile.ID, chunks, defaultChannel, chunkWorkers); err != nil {
+							database.DeleteFile(dbFile.ID)
+							return err
 						}
 						return nil
 					},
@@ -341,4 +313,102 @@ func buildHandler(ctx context.Context, database *db.DB, botClient *bot.Client, c
 			return ipc.Response{Error: fmt.Sprintf("unknown command: %s", req.Command)}
 		}
 	}
+}
+
+// uploadChunksParallel uploads file chunks concurrently using a worker pool
+// and records each successful chunk in the DB. Returns the first error encountered.
+func uploadChunksParallel(
+	ctx context.Context,
+	botClient *bot.Client,
+	database *db.DB,
+	localPath, virtualPath string,
+	fileID int64,
+	chunks []migrate.ChunkRange,
+	channel db.Channel,
+	workers int,
+) error {
+	if workers < 1 {
+		workers = 1
+	}
+	jobs := make(chan migrate.ChunkRange)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+
+	setErr := func(err error) {
+		mu.Lock()
+		if firstErr == nil {
+			firstErr = err
+		}
+		mu.Unlock()
+	}
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for chunk := range jobs {
+				if ctx.Err() != nil {
+					setErr(ctx.Err())
+					continue
+				}
+				mu.Lock()
+				stop := firstErr != nil
+				mu.Unlock()
+				if stop {
+					continue
+				}
+				sr, f, err := migrate.OpenChunk(localPath, chunk.Offset, chunk.Size)
+				if err != nil {
+					setErr(fmt.Errorf("open chunk: %w", err))
+					continue
+				}
+				fname := migrate.ChunkFilename(virtualPath, chunk.Index, len(chunks))
+				msgID, tgFileID, err := botClient.Upload(channel.TelegramID, fname, sr)
+				f.Close()
+				if err != nil {
+					setErr(fmt.Errorf("telegram: %w", err))
+					continue
+				}
+				if _, err := database.CreateChunk(db.Chunk{
+					FileID:         fileID,
+					ChunkIndex:     chunk.Index,
+					MessageID:      msgID,
+					TelegramFileID: tgFileID,
+					ChannelID:      channel.ID,
+					Size:           chunk.Size,
+				}); err != nil {
+					setErr(fmt.Errorf("save chunk: %w", err))
+					continue
+				}
+			}
+		}()
+	}
+	for _, c := range chunks {
+		jobs <- c
+	}
+	close(jobs)
+	wg.Wait()
+	return firstErr
+}
+
+// ensureDirs creates all parent directory entries for virtualPath if they don't exist.
+func ensureDirs(database *db.DB, virtualPath string) error {
+	parts := strings.Split(strings.Trim(virtualPath, "/"), "/")
+	for i := 1; i < len(parts); i++ {
+		dirPath := "/" + strings.Join(parts[:i], "/")
+		_, err := database.GetFileByPath(dirPath)
+		if err == db.ErrNotFound {
+			if _, err := database.CreateFile(db.File{
+				Path:  dirPath,
+				Name:  parts[i-1],
+				IsDir: true,
+			}); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+	}
+	return nil
 }

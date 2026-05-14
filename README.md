@@ -2,7 +2,9 @@
 
 A FUSE filesystem backed by Telegram channels. Store large video libraries (movies, TV shows) in Telegram and mount them read-only for Plex or other media servers.
 
-Files are split into up to 1.9 GB chunks to stay within Telegram's 2 GB upload limit. Metadata (paths, chunk locations) lives in a local SQLite database. A daemon handles the mount; a CLI manages everything else.
+Files are split into ~45 MB chunks to stay within the Telegram Bot API's 50 MB per-upload limit. Metadata (paths, chunk locations) lives in a local SQLite database. A daemon handles the mount; a CLI manages everything else.
+
+Uploads run in parallel: configurable file-level and chunk-level workers, with 429 rate-limit retries honoring Telegram's `RetryAfter`.
 
 ## Architecture
 
@@ -66,8 +68,14 @@ cache:
   max_size_gb: 2      # in-memory read cache
 
 chunk:
-  size_mb: 1900       # max chunk size (Telegram limit is 2048 MB)
+  size_mb: 45         # Bot API caps uploads at 50 MB per request
+
+migrate:
+  file_workers: 4     # files uploaded in parallel
+  chunk_workers: 4    # chunks per file uploaded in parallel
 ```
+
+With the defaults that's up to 16 concurrent uploads. Raise them if you don't hit 429s; lower them if you do. The daemon retries 429s automatically using `RetryAfter`.
 
 ## Usage
 
@@ -81,8 +89,9 @@ sudo systemctl enable tgfs   # start on boot
 ### Manage channels
 
 ```bash
-# Add a Telegram channel (get the ID from the channel URL or a bot like @userinfobot)
-tgfs channel add -1001234567890 movies
+# Add a Telegram channel (get the ID from the channel URL or a bot like @userinfobot).
+# Note: channel IDs start with '-', which cobra parses as a flag — use '--' to terminate flags:
+sudo tgfs channel add -- -1001234567890 movies
 
 # List configured channels
 tgfs channel ls
@@ -101,7 +110,7 @@ tgfs migrate /path/to/media --dry-run
 tgfs migrate /path/to/media
 ```
 
-Migration is idempotent — already-uploaded files are skipped.
+Migration is idempotent — already-uploaded files are skipped. Per-file upload errors are logged and the run continues with the remaining files.
 
 ### Manage files
 

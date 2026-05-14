@@ -1,9 +1,11 @@
 package bot
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -22,23 +24,39 @@ func New(token string) (*Client, error) {
 
 // Upload sends a file chunk to the given Telegram channel.
 // Returns (messageID, telegramFileID, error).
-// telegramFileID is needed later for DownloadByFileID.
-func (c *Client) Upload(channelID int64, filename string, r io.Reader) (int, string, error) {
-	reader := tgbotapi.FileReader{
-		Name:   filename,
-		Reader: r,
-	}
-	msg := tgbotapi.NewDocument(channelID, reader)
-	msg.Caption = filename
-	sent, err := c.api.Send(msg)
-	if err != nil {
+// Retries up to 5 times on HTTP 429, honoring RetryAfter from Telegram.
+// r must be seekable so the body can be replayed on retry.
+func (c *Client) Upload(channelID int64, filename string, r io.ReadSeeker) (int, string, error) {
+	const maxAttempts = 5
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if _, err := r.Seek(0, io.SeekStart); err != nil {
+			return 0, "", fmt.Errorf("seek chunk %q: %w", filename, err)
+		}
+		reader := tgbotapi.FileReader{Name: filename, Reader: r}
+		msg := tgbotapi.NewDocument(channelID, reader)
+		msg.Caption = filename
+		sent, err := c.api.Send(msg)
+		if err == nil {
+			fileID := ""
+			if sent.Document != nil {
+				fileID = sent.Document.FileID
+			}
+			return sent.MessageID, fileID, nil
+		}
+		lastErr = err
+		var tgErr *tgbotapi.Error
+		if errors.As(err, &tgErr) && tgErr.Code == 429 {
+			wait := tgErr.ResponseParameters.RetryAfter
+			if wait <= 0 {
+				wait = 1 << attempt // exponential backoff fallback
+			}
+			time.Sleep(time.Duration(wait) * time.Second)
+			continue
+		}
 		return 0, "", fmt.Errorf("upload chunk %q: %w", filename, err)
 	}
-	fileID := ""
-	if sent.Document != nil {
-		fileID = sent.Document.FileID
-	}
-	return sent.MessageID, fileID, nil
+	return 0, "", fmt.Errorf("upload chunk %q: exceeded retries: %w", filename, lastErr)
 }
 
 // DownloadByFileID downloads a file using its Telegram file_id.
